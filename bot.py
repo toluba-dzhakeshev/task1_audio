@@ -136,11 +136,13 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp_file:
             tmp_file.write(reply_text)
             tmp_file_path = tmp_file.name
+            
+        with open(tmp_file_path, "rb") as file_obj:
+            await update.message.reply_document(
+                document=InputFile(file_obj, filename="transcription.txt"),
+                caption="Транскрипция и анализ настроения"
+            )
 
-        await update.message.reply_document(
-            document=InputFile(tmp_file_path),
-            caption="Транскрипция и анализ настроения"
-        )
         os.remove(tmp_file_path)
 
     except Exception as e:
