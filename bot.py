@@ -15,6 +15,8 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
+from telegram import InputFile
+
 # -------------------------
 # Загрузка моделей
 # -------------------------
@@ -58,7 +60,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Хэндлер для приёма аудиофайлов (MP3)
 # -------------------------
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    #Определяем, был ли файл отправлен как документ или как аудио
+    # Определяем, был ли файл отправлен как документ или как аудио
     file_id = None
     file_name = None
     if update.message.document:
@@ -71,28 +73,28 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пожалуйста, отправьте MP3-файл.")
         return
 
-    #Проверяем, что файл имеет расширение .mp3
+    # Проверяем, что файл имеет расширение .mp3
     if not file_name.lower().endswith(".mp3"):
         await update.message.reply_text("Файл не является MP3.")
         return
 
     await update.message.reply_text("Обработка файла... Это может занять некоторое время.")
 
-    #Создаём временные файлы для исходного MP3 и результирующего WAV
+    # Создаём временные файлы для исходного MP3 и результирующего WAV
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_mp3:
         mp3_path = tmp_mp3.name
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
         wav_path = tmp_wav.name
 
     try:
-        #Скачиваем MP3-файл с серверов Telegram
+        # Скачиваем MP3-файл с серверов Telegram
         file = await context.bot.get_file(file_id)
         await file.download_to_drive(mp3_path)
 
-        #Предварительная обработка: конвертация и шумоподавление
+        # Предварительная обработка: конвертация и шумоподавление
         preprocess_audio(mp3_path, wav_path)
 
-        #Транскрибируем аудио с помощью Whisper
+        # Транскрибируем аудио с помощью Whisper
         result = whisper_model.transcribe(
             wav_path,
             language="ru",
@@ -100,7 +102,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         transcription_text = result["text"]
 
-        #Анализ настроения полученной транскрипции
+        # Анализ настроения полученной транскрипции
         inputs = tokenizer(
             transcription_text,
             return_tensors="pt",
@@ -118,18 +120,31 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sentiment_label = labels[sentiment_idx]
         sentiment_score = scores[sentiment_idx].item() * 100
 
-        #В примере: если не Positive – считаем Negative
+        # Если не Positive – считаем Negative
         if sentiment_label == "Positive":
             deal_status = f"Positive ({sentiment_score:.2f}%)"
         else:
             deal_status = f"Negative ({sentiment_score:.2f}%)"
 
-        #Формируем ответ для пользователя
+        # Формируем ответ для пользователя
         reply_text = (
             f"Транскрипция:\n{transcription_text}\n\n"
             f"Анализ настроения: {deal_status}"
         )
-        await update.message.reply_text(reply_text)
+
+        # Если сообщение слишком длинное, отправляем его как файл
+        if len(reply_text) > 4000:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp_file:
+                tmp_file.write(reply_text)
+                tmp_file_path = tmp_file.name
+
+            await update.message.reply_document(
+                document=InputFile(tmp_file_path),
+                caption="Транскрипция и анализ настроения"
+            )
+            os.remove(tmp_file_path)
+        else:
+            await update.message.reply_text(reply_text)
 
     except Exception as e:
         await update.message.reply_text(f"Произошла ошибка при обработке файла:\n{e}")
