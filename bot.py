@@ -132,19 +132,16 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Анализ настроения: {deal_status}"
         )
 
-        # Если сообщение слишком длинное, отправляем его как файл
-        if len(reply_text) > 4000:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp_file:
-                tmp_file.write(reply_text)
-                tmp_file_path = tmp_file.name
+        # Всегда отправляем транскрипцию как txt-файл
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as tmp_file:
+            tmp_file.write(reply_text)
+            tmp_file_path = tmp_file.name
 
-            await update.message.reply_document(
-                document=InputFile(tmp_file_path),
-                caption="Транскрипция и анализ настроения"
-            )
-            os.remove(tmp_file_path)
-        else:
-            await update.message.reply_text(reply_text)
+        await update.message.reply_document(
+            document=InputFile(tmp_file_path),
+            caption="Транскрипция и анализ настроения"
+        )
+        os.remove(tmp_file_path)
 
     except Exception as e:
         await update.message.reply_text(f"Произошла ошибка при обработке файла:\n{e}")
